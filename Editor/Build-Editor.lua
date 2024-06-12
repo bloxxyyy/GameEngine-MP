@@ -1,31 +1,45 @@
-project "App"
+project "Editor"
    kind "ConsoleApp"
    language "C++"
    cppdialect "C++20"
    targetdir "Binaries/%{cfg.buildcfg}"
    staticruntime "off"
 
-   files { "Source/**.h", "Source/**.cpp" }
+   files {
+	 "Source/**.h",
+	 "Source/**.cpp", 
+	 "../Libraries/Source/glad/**.c" 
+   }
 
    includedirs
    {
       "Source",
+	 "../Engine/Source",
+	 "../Libraries/Include/GLFW",
+	 "../Libraries/Include/glad",
+	 "../Libraries/Include/KHR"
+   }
 
-	  -- Include Core
-	  "../Core/Source"
+   libdirs {
+      "../Libraries/Lib/GLFW"
    }
 
    links
    {
-      "Core"
+      "Engine",
+      "glfw3"
    }
 
    targetdir ("../Binaries/" .. OutputDir .. "/%{prj.name}")
    objdir ("../Binaries/Intermediates/" .. OutputDir .. "/%{prj.name}")
 
+   filter { "system:not windows" }
+       links { "GL" }
+
    filter "system:windows"
        systemversion "latest"
        defines { "WINDOWS" }
+       links { "OpenGL32" }
 
    filter "configurations:Debug"
        defines { "DEBUG" }
