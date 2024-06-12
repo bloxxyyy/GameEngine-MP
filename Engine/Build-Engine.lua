@@ -5,11 +5,22 @@ project "Engine"
    targetdir "Binaries/%{cfg.buildcfg}"
    staticruntime "off"
 
-   files { "Source/**.h", "Source/**.cpp" }
+   files {
+	 "Source/**.h",
+	 "Source/**.cpp",
+	 "Source/**.vs",
+	 "Source/**.fs",
+	 "Source/Engine/Models/**.**",
+ 	 "Source/Engine/Images/**.**"
+   }
 
    includedirs
    {
-      "Source"
+      "Source",
+	 "Source/Engine/Headers",
+	 "Source/Engine/Images",
+	 "Source/Engine/Models",
+	 "../Libraries/Include/glm"
    }
 
    targetdir ("../Binaries/" .. OutputDir .. "/%{prj.name}")

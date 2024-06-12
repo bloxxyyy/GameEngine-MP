@@ -8,7 +8,15 @@ project "Editor"
    files {
 	 "Source/**.h",
 	 "Source/**.cpp", 
-	 "../Libraries/Source/glad/**.c" 
+	 "../Libraries/Source/glad/**.c", 
+    	 "../Libraries/Include/imgui/*.cpp",
+ 	 "../Libraries/Include/imgui/*.h",
+ 	 "../Libraries/Include/stb_image.h",  
+ 	 "../Libraries/Source/stb_image/stb_image.cpp",  	 "../Libraries/Include/imgui/backends/imgui_impl_opengl3.cpp", 
+"../Libraries/Include/imgui/backends/imgui_impl_glfw.cpp",
+"../Libraries/Include/imgui/backends/imgui_impl_opengl3.h", 
+"../Libraries/Include/imgui/backends/imgui_impl_glfw.h"
+
    }
 
    includedirs
@@ -17,7 +25,10 @@ project "Editor"
 	 "../Engine/Source",
 	 "../Libraries/Include/GLFW",
 	 "../Libraries/Include/glad",
-	 "../Libraries/Include/KHR"
+	 "../Libraries/Include/KHR",
+	 "../Libraries/Include/imgui",
+   	 "../Libraries/Include/glm",
+   	 "../Libraries/Include/stb_image"
    }
 
    libdirs {
