@@ -1,13 +1,9 @@
-#include "Engine/Headers/Engine.h"
-
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
 #include <iostream>
 #include <string>
 #include <vector>
-
-#include <filesystem>
 
 #include <cstdio>
 #include <memory>
@@ -52,7 +48,21 @@ struct Material {
     glm::vec3 diffuse;
     glm::vec3 specular;
     float shininess;
-    std::string diffuseMap; // Filename of the diffuse texture map
+    std::string diffuseMap;
+    std::string diffuseTexture;
+    unsigned int textureID; // Texture ID
+};
+
+struct Face {
+    glm::vec3 vertices[3];
+    glm::vec2 uvs[3];
+    glm::vec3 normals[3];
+};
+
+struct ModelPart {
+    unsigned int vertexCount;
+    std::string materialName;
+    std::vector<Face> faces;
 };
 
 std::unordered_map<std::string, Material> loadMTL(const std::string& mtlPath) {
@@ -69,6 +79,8 @@ std::unordered_map<std::string, Material> loadMTL(const std::string& mtlPath) {
         std::istringstream iss(line);
         std::string type;
         iss >> type;
+
+        unsigned int textureID = 0;
 
         if (type == "newmtl") {
             if (currentMaterial.diffuseMap != "") {
@@ -89,6 +101,14 @@ std::unordered_map<std::string, Material> loadMTL(const std::string& mtlPath) {
         else if (type == "Ns") {
             iss >> currentMaterial.shininess;
         }
+        else if (type == "map_Kd") {
+            iss >> currentMaterial.diffuseTexture;
+            int width, height, nrChannels;
+            std::string img = "../Engine/Source/Engine/Images/" + currentMaterial.diffuseTexture;
+            textureID++;
+            LoadTexture(width, height, nrChannels, textureID, img.c_str(), false);
+            currentMaterial.textureID = textureID;
+        }
     }
 
     if (currentMaterial.diffuseMap != "") {
@@ -98,24 +118,15 @@ std::unordered_map<std::string, Material> loadMTL(const std::string& mtlPath) {
     return materials;
 }
 
-struct Face {
-    unsigned int vertexIndex[3];
-    unsigned int uvIndex[3];
-    unsigned int normalIndex[3];
-    std::string materialName;
-};
-
 bool loadOBJ(
     const std::string& path,
-    std::vector<glm::vec3>& out_vertices,
-    std::vector<glm::vec2>& out_uvs,
-    std::vector<glm::vec3>& out_normals,
-    std::vector<Face>& out_faces
+    std::vector<ModelPart>& out_model_parts
 ) {
     std::vector<unsigned int> vertexIndices, uvIndices, normalIndices;
     std::vector<glm::vec3> temp_vertices, temp_normals;
     std::vector<glm::vec2> temp_uvs;
     std::string currentMaterialName;
+    ModelPart* currentModelPart = nullptr;
 
     FILE* file = nullptr;
     errno_t err = fopen_s(&file, path.c_str(), "r");
@@ -158,49 +169,92 @@ bool loadOBJ(
                 std::cerr << "File can't be read by our simple parser. Try exporting with other options.\n";
                 return false;
             }
-            vertexIndices.push_back(vertexIndex[0]);
-            vertexIndices.push_back(vertexIndex[1]);
-            vertexIndices.push_back(vertexIndex[2]);
-            uvIndices.push_back(uvIndex[0]);
-            uvIndices.push_back(uvIndex[1]);
-            uvIndices.push_back(uvIndex[2]);
-            normalIndices.push_back(normalIndex[0]);
-            normalIndices.push_back(normalIndex[1]);
-            normalIndices.push_back(normalIndex[2]);
-
-            // Store material name for each face
-            out_faces.emplace_back();
-            out_faces.back().materialName = currentMaterialName;
-            for (int i = 0; i < 3; ++i) {
-                out_faces.back().vertexIndex[i] = vertexIndex[i];
-                out_faces.back().uvIndex[i] = uvIndex[i];
-                out_faces.back().normalIndex[i] = normalIndex[i];
+            if (currentModelPart == nullptr) {
+                out_model_parts.emplace_back();
+                currentModelPart = &out_model_parts.back();
+                currentModelPart->materialName = currentMaterialName;
             }
+            Face face;
+            for (int i = 0; i < 3; ++i) {
+                face.vertices[i] = temp_vertices[vertexIndex[i] - 1];
+                face.uvs[i] = temp_uvs[uvIndex[i] - 1];
+                face.normals[i] = temp_normals[normalIndex[i] - 1];
+            }
+            currentModelPart->faces.push_back(face);
+            currentModelPart->vertexCount += 3;
         }
         else if (strncmp(line, "usemtl ", 7) == 0) {
             currentMaterialName = line + 7;
             // Remove trailing newline if present
             currentMaterialName.erase(std::remove(currentMaterialName.begin(), currentMaterialName.end(), '\n'), currentMaterialName.end());
-        }
-    }
 
-    // Populate out_vertices, out_uvs, out_normals using indices
-    for (size_t i = 0; i < vertexIndices.size(); ++i) {
-        unsigned int vertexIndex = vertexIndices[i];
-        out_vertices.push_back(temp_vertices[vertexIndex - 1]);
-
-        if (!uvIndices.empty()) {
-            unsigned int uvIndex = uvIndices[i];
-            out_uvs.push_back(temp_uvs[uvIndex - 1]);
-        }
-
-        if (!normalIndices.empty()) {
-            unsigned int normalIndex = normalIndices[i];
-            out_normals.push_back(temp_normals[normalIndex - 1]);
+            // Create new ModelPart for the new material
+            out_model_parts.emplace_back();
+            currentModelPart = &out_model_parts.back();
+            currentModelPart->materialName = currentMaterialName;
         }
     }
 
     return true;
+}
+
+void setupModelPartBuffers(const ModelPart& part, GLuint& VAO, GLuint& VBO) {
+    // Generate buffers
+    glGenBuffers(1, &VBO);
+    glGenVertexArrays(1, &VAO);
+
+    glBindVertexArray(VAO);
+
+    // Prepare data for VBO
+    std::vector<float> vertexData;
+
+    for (const auto& face : part.faces) {
+        for (int i = 0; i < 3; ++i) {
+            const glm::vec3& vertex = face.vertices[i];
+            const glm::vec2& uv = face.uvs[i];
+            const glm::vec3& normal = face.normals[i];
+
+            vertexData.insert(vertexData.end(), { vertex.x, vertex.y, vertex.z });
+            vertexData.insert(vertexData.end(), { uv.x, uv.y });
+            vertexData.insert(vertexData.end(), { normal.x, normal.y, normal.z });
+        }
+    }
+
+    // Upload vertex data to VBO
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), vertexData.data(), GL_STATIC_DRAW);
+
+    // Set up vertex attribute pointers
+    // Assuming layout is as follows: 
+    // position (3 floats), uv (2 floats), normal (3 floats)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0); // Position
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float))); // UV
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float))); // Normal
+    glEnableVertexAttribArray(2);
+
+    // Unbind VAO
+    glBindVertexArray(0);
+}
+
+void renderModelPart(const ModelPart& part, const std::unordered_map<std::string, Material>& materials, GLuint VAO, Shader& shader) {
+    glBindVertexArray(VAO);
+
+    auto it = materials.find(part.materialName);
+    if (it != materials.end()) {
+        const Material& material = it->second;
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, material.textureID);
+        shader.setInt("texture1", 0);
+    }
+
+    glDrawArrays(GL_TRIANGLES, 0, part.vertexCount);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindVertexArray(0);
 }
 
 int main()
@@ -210,122 +264,27 @@ int main()
     glEnable(GL_DEPTH_TEST);
     initializeImgui(window);
 
-    /*
 
-    // texture loading
-
-    stbi_set_flip_vertically_on_load(true);
-    int width, height, nrChannels;
-    unsigned int texture, texture2;
-    LoadTexture(width, height, nrChannels, texture, "Images/wall.jpg", false);
-    LoadTexture(width, height, nrChannels, texture2, "Images/awesomeface.png", true);
-
-    Shader RectShader("shader.vs", "shader.fs");
-
-    float vertices[] = {
-         // positions         // colors          // texture coords
-        -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  1.0f, 1.0f, // Bottom-left
-         0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f,  1.0f, 0.0f, // Bottom-right
-         0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, // Top-right
-        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, // Top-left
-
-        -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  1.0f, 1.0f, // Bottom-left
-         0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,  1.0f, 0.0f, // Bottom-right
-         0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f, // Top-right
-        -0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f, // Top-left
-    };
-
-    unsigned int indices[] = {
-        // Front face
-        0, 1, 2,
-        2, 3, 0,
-        // Right face
-        1, 5, 6,
-        6, 2, 1,
-        // Back face
-        7, 6, 5,
-        5, 4, 7,
-        // Left face
-        4, 0, 3,
-        3, 7, 4,
-        // Bottom face
-        4, 5, 1,
-        1, 0, 4,
-        // Top face
-        3, 2, 6,
-        6, 7, 3
-    };
-
-    unsigned int VBO, VAO, EBO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glBindVertexArray(VAO);
-
-    glGenBuffers(1, &EBO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    // verts
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // colour
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    // texture
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-
-    //clear
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
-    RectShader.use();
-
-    RectShader.setInt("texture", 0);
-    RectShader.setInt("texture2", 1);
-
-    */
-
-    // load Materials
-    std::filesystem::path currentDir = std::filesystem::current_path();
-    std::cout << "Current directory is: " << currentDir << std::endl;
     std::unordered_map<std::string, Material> materials = loadMTL("../Engine/Source/Engine/Models/test.mtl");
-
-    // load model
-    std::vector<glm::vec3> vertices;
-    std::vector<glm::vec2> uvs;
-    std::vector<glm::vec3> normals;
     std::vector<Face> faces;
+    std::vector<ModelPart> modelParts;
 
-    if (!loadOBJ("../Engine/Source/Engine/Models/test.obj", vertices, uvs, normals, faces)) {
+    if (!loadOBJ("../Engine/Source/Engine/Models/test.obj", modelParts)) {
         std::cerr << "Failed to load the object" << std::endl;
         return -1;
     }
 
+    std::vector<GLuint> VAOS;
+    std::vector<GLuint> VBOS;
 
-    unsigned int VBO, VAO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-
-    glBindVertexArray(VAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), &vertices[0], GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    for (const auto& part : modelParts) {
+		GLuint VAO, VBO;
+		setupModelPartBuffers(part, VAO, VBO);
+		VAOS.push_back(VAO);
+		VBOS.push_back(VBO);
+	}
 
     Shader shader("../Engine/Source/Engine/modelShader.vs", "../Engine/Source/Engine/modelShader.fs");
-
 
     while (!glfwWindowShouldClose(window))
     {
@@ -343,9 +302,6 @@ int main()
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-
-
-
         shader.use();
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
@@ -356,50 +312,11 @@ int main()
         shader.setMat4("view", view);
         shader.setMat4("model", model);
 
-        for (const auto& face : faces) {
-            // Retrieve the material associated with this face
-            auto materialIt = materials.find(face.materialName);
-            if (materialIt != materials.end()) {
-                const Material& material = materialIt->second;
-
-                // Bind material properties to shader uniforms
-                shader.setVec3("material.ambient", material.ambient);
-                shader.setVec3("material.diffuse", material.diffuse);
-                shader.setVec3("material.specular", material.specular);
-                shader.setFloat("material.shininess", material.shininess);
-            }
+        int index = 0;
+        for (const auto& part : modelParts) {
+            renderModelPart(part, materials, VAOS[index], shader);
+            index++;
         }
-
-        glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, vertices.size());
-        glBindVertexArray(0);
-
-
-
-
-
-
-        //glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        //RectShader.setMat4("projection", projection);
-        //glm::mat4 view = camera.GetViewMatrix();
-        //RectShader.setMat4("view", view);
-
-
-        //glm::mat4 modelMatrix = glm::mat4(1.0f);
-        //modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, 0.0f));
-        //modelMatrix = glm::rotate(modelMatrix, (float)glfwGetTime() * glm::radians(50.0f), glm::vec3(0.5f, 1.0f, 0.0f));
-        //RectShader.setMat4("model", modelMatrix);
-
-        //draw funny rect
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, texture);
-        //glActiveTexture(GL_TEXTURE1);
-        //glBindTexture(GL_TEXTURE_2D, texture2);
-
-        //RectShader.use();
-
-       // glBindVertexArray(VAO);
-       // glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -408,10 +325,14 @@ int main()
         glfwPollEvents();
     }
 
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
+    // delete all vaos and vbos
+    for (auto vao : VAOS) {
+		glDeleteVertexArrays(1, &vao);
+	}
 
-    //glDeleteBuffers(1, &EBO);
+    for (auto vbo : VBOS) {
+        glDeleteBuffers(1, &vbo);
+    }
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -446,7 +367,9 @@ void LoadTexture(int& width, int& height, int& nrChannels, unsigned int& texture
     {
         std::cout << "Failed to load texture" << std::endl;
     }
+
     stbi_image_free(data);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void processInput(GLFWwindow* window)
