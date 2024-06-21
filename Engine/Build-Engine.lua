@@ -11,7 +11,8 @@ project "Engine"
 	 "Source/**.vs",
 	 "Source/**.fs",
 	 "Source/Engine/Models/**.**",
- 	 "Source/Engine/Images/**.**"
+ 	 "Source/Engine/Images/**.**",
+	 "Source/Engine/Headers/**.**"
    }
 
    includedirs
@@ -20,15 +21,35 @@ project "Engine"
 	 "Source/Engine/Headers",
 	 "Source/Engine/Images",
 	 "Source/Engine/Models",
-	 "../Libraries/Include/glm"
+	 "../Libraries/Include/glm",
+      "../Libraries/Include/GLFW",
+	 "../Libraries/Include/glad",
+	 "../Libraries/Include/KHR",
+   	 "../Libraries/Include/stb_image"
    }
+
+   libdirs {
+      "../Libraries/Lib/GLFW"
+   }
+
+   links
+   {
+      "glfw3"
+   }
+
 
    targetdir ("../Binaries/" .. OutputDir .. "/%{prj.name}")
    objdir ("../Binaries/Intermediates/" .. OutputDir .. "/%{prj.name}")
 
+   
+   filter { "system:not windows" }
+       links { "GL" }
+
    filter "system:windows"
        systemversion "latest"
-       defines { }
+       defines { "WINDOWS" }
+       links { "OpenGL32" }
+
 
    filter "configurations:Debug"
        defines { "DEBUG" }
