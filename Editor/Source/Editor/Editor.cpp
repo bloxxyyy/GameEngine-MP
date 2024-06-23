@@ -1,33 +1,17 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-
-#include <iostream>
-#include <string>
-#include <vector>
-
-#include <cstdio>
-#include <memory>
-
-#include "Engine/Headers/shaderHelper.h"
-#include <stb_image.h>
-#include <unordered_map>
-
-#include <glm.hpp>
-#include <gtc/matrix_transform.hpp>
-#include <gtc/type_ptr.hpp>
-#include <vec3.hpp>
+#include <map>
 
 #include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
 
 #include "Engine/Headers/camera.h"
-#include "Engine/Headers/face.h"
-#include "Engine/Headers/modelPart.h"
-#include "Engine/Headers/material.h"
 #include "Engine/Headers/objLoader.h"
 #include "Engine/Headers/globals.h"
-
+#include "Engine/Headers/ECS/Components/Transform.h"
+#include "Engine/Headers/ECS/Components/MeshRenderer.h"
+#include "Engine/Headers/ECS/Systems/Rendersystem.h"
 
 void processInput(GLFWwindow* window);
 void initializeImgui(GLFWwindow* window);
@@ -46,6 +30,12 @@ bool firstMouse = true;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
+static float lastTime = 0.0f;
+static int nbFrames = 0;
+
+std::map<int, std::shared_ptr<Transform>> transforms;
+std::map<int, std::shared_ptr<MeshRenderer>> meshRenderers;
+
 int main()
 {
     GLFWwindow* window = initializeWindow();
@@ -53,13 +43,36 @@ int main()
     glEnable(GL_DEPTH_TEST);
     initializeImgui(window);
 
-    ObjLoader testObj("../Engine/Source/Engine/Models/test.obj", "../Engine/Source/Engine/Models/test.mtl");
+    RenderSystem renderSystem(transforms, meshRenderers);
+
+    int entityId = 1;
+    int entityId2 = 2;
+    
+    renderSystem.AddNewRenderable(entityId, "../Engine/Source/Engine/Models/test.obj", "../Engine/Source/Engine/Models/test.mtl");
+    renderSystem.AddNewRenderable(entityId2, "../Engine/Source/Engine/Models/skibidiFortnite.obj", "../Engine/Source/Engine/Models/skibidiFortnite.mtl");
+
+#ifdef NDEBUG
+#else
+    glfwSwapInterval(0); // Disable vsync for testing (more that 60 fps) but screentearing will be visible
+#endif
 
     while (!glfwWindowShouldClose(window))
     {
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+        // FPS calculation
+        nbFrames++;
+        if (currentFrame - lastTime >= 1.0f) {
+            float fps = static_cast<float>(nbFrames) / (currentFrame - lastTime);
+            std::ostringstream oss;
+            oss << "Marie Gyro Engine | FPS: " << fps;
+            glfwSetWindowTitle(window, oss.str().c_str());
+
+            nbFrames = 0;
+            lastTime = currentFrame;
+        }
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -71,7 +84,9 @@ int main()
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        testObj.Render(camera);
+        for (auto& [key, meshRenderer] : meshRenderers) {
+			meshRenderer->Render(camera);
+		}
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -168,6 +183,7 @@ GLFWwindow* initializeWindow() {
         glfwTerminate();
         return nullptr;
     }
+
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
