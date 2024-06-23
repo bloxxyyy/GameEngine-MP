@@ -4,6 +4,20 @@
 RenderSystem::RenderSystem(std::map<int, std::shared_ptr<Transform>>& transforms, std::map<int, std::shared_ptr<MeshRenderer>>& meshRenderers)
 	: transforms(transforms), meshRenderers(meshRenderers) {}
 
+void RenderSystem::Render(Camera camera)
+{
+	for (auto& meshRenderer : meshRenderers) {
+		auto transform = transforms.find(meshRenderer.first);
+
+		glm::mat4 model = glm::mat4(1.0f);
+		if (transform != transforms.end()) {
+			model = transform->second->GetModelMatrix();
+		}
+
+		meshRenderer.second->Render(camera, model);
+	}
+}
+
 void RenderSystem::RemoveRenderable(int entityId)
 {
 	auto meshRenderer = meshRenderers[entityId];

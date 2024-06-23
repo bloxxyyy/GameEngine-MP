@@ -18,7 +18,7 @@ void MeshRenderer::SetShader()
     shader = std::move(s);
 }
 
-void MeshRenderer::Render(Camera camera) {
+void MeshRenderer::Render(Camera camera, glm::mat4 modelMatrix) {
 
     if (!shader) {
         std::cerr << "Shader is null!" << std::endl;
@@ -28,7 +28,7 @@ void MeshRenderer::Render(Camera camera) {
     shader->use();
     glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
     glm::mat4 view = camera.GetViewMatrix();
-    glm::mat4 model = glm::mat4(1.0f);
+    glm::mat4 model = modelMatrix;
     model = glm::rotate(model, glm::radians(50.0f) * (float)glfwGetTime(), glm::vec3(0.5f, 1.0f, 0.0f));
 
     shader->setMat4("projection", projection);

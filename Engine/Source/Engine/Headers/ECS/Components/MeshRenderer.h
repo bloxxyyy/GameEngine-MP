@@ -28,7 +28,7 @@ private:
 public:
     MeshRenderer(int entityId);
     void SetShader();
-    void Render(Camera camera);
+    void Render(Camera camera, glm::mat4 modelMatrix);
 
 private:
     void RenderModelPart(const ModelPart& part, GLuint VAO);

@@ -43,12 +43,16 @@ int main()
     glEnable(GL_DEPTH_TEST);
     initializeImgui(window);
 
-    RenderSystem renderSystem(transforms, meshRenderers);
-
     int entityId = 1;
     int entityId2 = 2;
+
+    std::shared_ptr<Transform> transform = std::make_shared<Transform>();
+    transform->position = glm::vec3(4.0f, 0.0f, 0.0f);
+    transforms[entityId2] = transform;
+
+    RenderSystem renderSystem(transforms, meshRenderers);
     
-    renderSystem.AddNewRenderable(entityId, "../Engine/Source/Engine/Models/test.obj", "../Engine/Source/Engine/Models/test.mtl");
+    renderSystem.AddNewRenderable(entityId, "../Engine/Source/Engine/Models/rose.obj", "../Engine/Source/Engine/Models/rose.mtl");
     renderSystem.AddNewRenderable(entityId2, "../Engine/Source/Engine/Models/skibidiFortnite.obj", "../Engine/Source/Engine/Models/skibidiFortnite.mtl");
 
 #ifdef NDEBUG
@@ -84,9 +88,7 @@ int main()
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        for (auto& [key, meshRenderer] : meshRenderers) {
-			meshRenderer->Render(camera);
-		}
+        renderSystem.Render(camera);
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

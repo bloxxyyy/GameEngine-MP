@@ -16,4 +16,5 @@ public:
     RenderSystem(std::map<int, std::shared_ptr<Transform>>& transforms, std::map<int, std::shared_ptr<MeshRenderer>>& meshRenderers);
     void AddNewRenderable(int entityId, std::string objFilePath, std::string mtlFilePath);
     void RemoveRenderable(int entityId);
+    void Render(Camera camera);
 };
