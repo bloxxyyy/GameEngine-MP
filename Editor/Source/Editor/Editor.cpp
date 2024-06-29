@@ -12,12 +12,14 @@
 #include "Engine/Headers/ECS/Components/Transform.h"
 #include "Engine/Headers/ECS/Components/MeshRenderer.h"
 #include "Engine/Headers/ECS/Systems/Rendersystem.h"
+#include "Engine/Headers/input.h"
+#include <Engine/Headers/Debug/DebugLine.h>
 
-void processInput(GLFWwindow* window);
 void initializeImgui(GLFWwindow* window);
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 GLFWwindow* initializeWindow();
 
@@ -55,6 +57,11 @@ int main()
     renderSystem.AddNewRenderable(entityId, "../Engine/Source/Engine/Models/rose.obj", "../Engine/Source/Engine/Models/rose.mtl");
     renderSystem.AddNewRenderable(entityId2, "../Engine/Source/Engine/Models/skibidiFortnite.obj", "../Engine/Source/Engine/Models/skibidiFortnite.mtl");
 
+    glm::vec3 start = glm::vec3(-2.0f, 2.0f, 0.5f);
+    glm::vec3 end = glm::vec3(0.5f, 2.0f, 0.5f);
+    DebugLine debugLine(start, end);
+
+
 #ifdef NDEBUG
 #else
     glfwSwapInterval(0); // Disable vsync for testing (more that 60 fps) but screentearing will be visible
@@ -83,16 +90,35 @@ int main()
         ImGui::NewFrame();
         ImGui::ShowDemoWindow(); // Show demo window! :)
 
-        processInput(window);
+        if (INPUT.isKeyPressed(GLFW_KEY_ESCAPE))
+            glfwSetWindowShouldClose(window, true);
+
+        if (INPUT.isKeyPressed(GLFW_KEY_W))
+            camera.ProcessKeyboard(camera.FORWARD, deltaTime);
+        if (INPUT.isKeyPressed(GLFW_KEY_S))
+            camera.ProcessKeyboard(camera.BACKWARD, deltaTime);
+        if (INPUT.isKeyPressed(GLFW_KEY_A))
+            camera.ProcessKeyboard(camera.LEFT, deltaTime);
+        if (INPUT.isKeyPressed(GLFW_KEY_D))
+            camera.ProcessKeyboard(camera.RIGHT, deltaTime);
+
+        if (INPUT.isKeyReleased(GLFW_KEY_GRAVE_ACCENT))
+        {
+            static bool cursorDisabled = false;
+            cursorDisabled = !cursorDisabled;
+            glfwSetInputMode(window, GLFW_CURSOR, cursorDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+        }
 
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         renderSystem.Render(camera);
+        debugLine.Render(camera, glm::mat4(1.0f));
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
+        INPUT.updatePressedKeys();
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -103,21 +129,6 @@ int main()
 
     glfwTerminate();
     return 0;
-}
-
-void processInput(GLFWwindow* window)
-{
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(camera.FORWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(camera.BACKWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(camera.LEFT, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(camera.RIGHT, deltaTime);
 }
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -164,6 +175,11 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
     camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    INPUT.key_callback(window, key, scancode, action, mods);
+}
+
 GLFWwindow* initializeWindow() {
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
@@ -191,6 +207,7 @@ GLFWwindow* initializeWindow() {
 
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
+    glfwSetKeyCallback(window, key_callback);
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
